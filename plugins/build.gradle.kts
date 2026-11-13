@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.github.yourusernamehere"
+    namespace = "com.github.yournamehere"
     compileSdk = 34
     defaultConfig {
         minSdk = 26
