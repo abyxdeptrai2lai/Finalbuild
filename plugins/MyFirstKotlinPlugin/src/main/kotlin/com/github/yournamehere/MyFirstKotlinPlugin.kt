@@ -16,7 +16,6 @@ import com.aliucord.annotations.AliucordPlugin
 import com.aliucord.entities.Plugin
 import com.aliucord.patcher.after
 import com.lytefast.flexinput.fragment.FlexInputFragment
-import de.robv.android.xposed.XposedBridge
 import kotlin.concurrent.thread
 import kotlin.random.Random
 
@@ -26,128 +25,107 @@ class MyFirstKotlinPlugin : Plugin() {
     private var spamThread: Thread? = null
     private var customPrefix = ""
     private var isPrefixEnabled = false
+    private var chatInputRef: EditText? = null
 
     @SuppressLint("ClickableViewAccessibility")
     override fun start(context: Context) {
-        try {
-            val activity = context as android.app.Activity
-            val rootView = activity.window.decorView as ViewGroup
+        // 1. Hook vào khung chat để lấy nút + và thêm nút Paste
+        patcher.after<FlexInputFragment>("onViewCreated", View::class.java) { param ->
+            val view = param.args[0] as View
+            val input = view.findViewById<EditText>(com.discord.R.id.chat_input_edit_text) ?: return@after
+            val parent = input.parent as? ViewGroup ?: return@after
+            chatInputRef = input
 
-            var chatInput: EditText? = null
-            
-            patcher.after<FlexInputFragment>("onViewCreated", View::class.java) { param ->
-                val view = param.args[0] as View
-                chatInput = view.findViewById(com.discord.R.id.chat_input_edit_text)
-                
-                // Tự động chèn Prefix khi khung chat trống
-                chatInput?.addTextChangedListener(object : TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                    override fun afterTextChanged(s: Editable?) {
-                        if (isPrefixEnabled && customPrefix.isNotEmpty() && s != null && s.toString().trim().isEmpty() && !isSpamming) {
-                            chatInput?.postDelayed({
-                                if (chatInput?.text.toString().trim().isEmpty()) {
-                                    chatInput?.setText("$customPrefix ")
-                                    chatInput?.setSelection(chatInput?.text?.length ?: 0)
-                                }
-                            }, 100)
-                        }
-                    }
-                })
-            }
-
-            // Nút Paste (Lơ lửng)
+            // Nút Paste (nằm cạnh dấu +)
             val pasteBtn = ImageButton(context).apply {
                 setImageResource(android.R.drawable.ic_menu_edit)
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                setPadding(20, 20, 20, 20)
-            }
-            val pasteParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
-            pasteParams.gravity = Gravity.TOP or Gravity.START
-            pasteParams.leftMargin = 100
-            pasteParams.topMargin = 300
-
-            // Nút Spam (Lơ lửng)
-            val spamBtn = ImageButton(context).apply {
-                setImageResource(android.R.drawable.ic_menu_sort_by_size)
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                setPadding(20, 20, 20, 20)
-            }
-            val spamParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
-            spamParams.gravity = Gravity.TOP or Gravity.START
-            spamParams.leftMargin = 200
-            spamParams.topMargin = 300
-
-            rootView.addView(pasteBtn, pasteParams)
-            rootView.addView(spamBtn, spamParams)
-
-            // Logic kéo thả nút Paste
-            var pInitX = 0; var pInitY = 0; var pTouchX = 0f; var pTouchY = 0f; var pMoved = false
-            pasteBtn.setOnTouchListener { v, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        pInitX = pasteParams.leftMargin; pInitY = pasteParams.topMargin
-                        pTouchX = event.rawX; pTouchY = event.rawY
-                        pMoved = false
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.rawX - pTouchX).toInt()
-                        val dy = (event.rawY - pTouchY).toInt()
-                        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) pMoved = true
-                        pasteParams.leftMargin = pInitX + dx
-                        pasteParams.topMargin = pInitY + dy
-                        v.layoutParams = pasteParams
-                        true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        if (!pMoved) {
-                            val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            if (cb.hasPrimaryClip()) {
-                                val text = cb.primaryClip?.getItemAt(0)?.text
-                                if (text != null) {
-                                    val input = chatInput
-                                    if (input != null) {
-                                        val start = input.selectionStart.coerceAtLeast(0)
-                                        input.text.insert(start, text)
-                                    } else {
-                                        Toast.makeText(context, "Mở khung chat trước!", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
+                setPadding(15, 15, 15, 15)
+                setOnClickListener {
+                    val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    if (cb.hasPrimaryClip()) {
+                        val text = cb.primaryClip?.getItemAt(0)?.text
+                        if (text != null) {
+                            val start = input.selectionStart.coerceAtLeast(0)
+                            input.text.insert(start, text)
                         }
-                        true
                     }
-                    else -> false
                 }
             }
+            // Thêm nút Paste vào vị trí số 1 (ngay sau nút +)
+            parent.addView(pasteBtn, 1)
+
+            // Tự động chèn Prefix khi khung chat trống
+            input.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    if (isPrefixEnabled && customPrefix.isNotEmpty() && s != null && s.toString().trim().isEmpty() && !isSpamming) {
+                        input.postDelayed({
+                            if (input.text.toString().trim().isEmpty()) {
+                                input.setText("$customPrefix ")
+                                input.setSelection(input.text.length)
+                            }
+                        }, 150)
+                    }
+                }
+            })
+        }
+
+        // 2. Tạo nút Spam nổi trên màn hình (kéo thả được)
+        if (context is android.app.Activity) {
+            val rootView = context.window.decorView as ViewGroup
+            
+            val spamBtn = ImageButton(context).apply {
+                setImageResource(android.R.drawable.ic_menu_sort_by_size) // Icon vuông
+                setBackgroundColor(android.graphics.Color.parseColor("#55FF5555")) // Màu đỏ mờ để dễ thấy
+                setPadding(25, 25, 25, 25)
+            }
+            
+            val params = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            params.gravity = Gravity.TOP or Gravity.START
+            params.leftMargin = 200
+            params.topMargin = 400
+            
+            rootView.addView(spamBtn, params)
 
             // Logic kéo thả nút Spam
-            var sInitX = 0; var sInitY = 0; var sTouchX = 0f; var sTouchY = 0f; var sMoved = false
+            var initialX = 0
+            var initialY = 0
+            var initialTouchX = 0f
+            var initialTouchY = 0f
+            var isDragging = false
+
             spamBtn.setOnTouchListener { v, event ->
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        sInitX = spamParams.leftMargin; sInitY = spamParams.topMargin
-                        sTouchX = event.rawX; sTouchY = event.rawY
-                        sMoved = false
+                        initialX = params.leftMargin
+                        initialY = params.topMargin
+                        initialTouchX = event.rawX
+                        initialTouchY = event.rawY
+                        isDragging = false
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.rawX - sTouchX).toInt()
-                        val dy = (event.rawY - sTouchY).toInt()
-                        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) sMoved = true
-                        spamParams.leftMargin = sInitX + dx
-                        spamParams.topMargin = sInitY + dy
-                        v.layoutParams = spamParams
+                        val dx = (event.rawX - initialTouchX).toInt()
+                        val dy = (event.rawY - initialTouchY).toInt()
+                        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true
+                        
+                        params.leftMargin = initialX + dx
+                        params.topMargin = initialY + dy
+                        v.layoutParams = params
                         true
                     }
                     MotionEvent.ACTION_UP -> {
-                        if (!sMoved) {
-                            val input = chatInput
+                        if (!isDragging) {
+                            val input = chatInputRef
                             if (input != null) {
                                 showSpamMenu(context, input)
                             } else {
-                                Toast.makeText(context, "Mở khung chat trước!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Hãy mở khung chat trước!", Toast.LENGTH_SHORT).show()
                             }
                         }
                         true
@@ -155,9 +133,6 @@ class MyFirstKotlinPlugin : Plugin() {
                     else -> false
                 }
             }
-
-        } catch (e: Throwable) {
-            XposedBridge.log(e)
         }
     }
 
@@ -207,8 +182,7 @@ class MyFirstKotlinPlugin : Plugin() {
         val tagPosGroup = RadioGroup(context).apply { orientation = RadioGroup.HORIZONTAL }
         val tagPosOptions = arrayOf("Đầu", "Giữa", "Cuối", "Random", "Cả 2", "Cả 3")
         for (i in tagPosOptions.indices) {
-            // FIX LỖI: Thay id = i thành this.id = i + 100
-            val rb = RadioButton(context).apply { text = tagPosOptions[i]; this.id = i + 100 }
+            val rb = RadioButton(context).apply { text = tagPosOptions[i]; setId(i + 100) }
             tagPosGroup.addView(rb)
         }
         tagPosGroup.check(100)
@@ -218,8 +192,7 @@ class MyFirstKotlinPlugin : Plugin() {
         val msgPosGroup = RadioGroup(context)
         val msgPosOptions = arrayOf("Đầu - Cuối", "Cuối - Đầu", "Random", "Full (CopyPaste)")
         for (i in msgPosOptions.indices) {
-            // FIX LỖI: Thay id = i thành this.id = i + 200
-            val rb = RadioButton(context).apply { text = msgPosOptions[i]; this.id = i + 200 }
+            val rb = RadioButton(context).apply { text = msgPosOptions[i]; setId(i + 200) }
             msgPosGroup.addView(rb)
         }
         msgPosGroup.check(200)
@@ -336,8 +309,8 @@ class MyFirstKotlinPlugin : Plugin() {
             val delay = delayInput.text.toString().toLongOrNull() ?: 1000L
             val doTag = tagCheck.isChecked
             val tagId = tagInput.text.toString().trim()
-            val tagPos = tagPosGroup.checkedRadioButtonId - 100 // FIX LỖI: Trừ đi 100 để lấy đúng vị trí
-            val msgPos = msgPosGroup.checkedRadioButtonId - 200 // FIX LỖI: Trừ đi 200 để lấy đúng vị trí
+            val tagPos = tagPosGroup.checkedRadioButtonId - 100
+            val msgPos = msgPosGroup.checkedRadioButtonId - 200
             val isLoop = loopCheck.isChecked
             isPrefixEnabled = prefixCheck.isChecked
 
