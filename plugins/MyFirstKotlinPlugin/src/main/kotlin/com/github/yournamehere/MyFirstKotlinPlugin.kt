@@ -1,4 +1,4 @@
-package com.github.yourusernamehere
+package com.github.yournamehere
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
@@ -29,14 +29,12 @@ class MyFirstKotlinPlugin : Plugin() {
 
     @SuppressLint("ClickableViewAccessibility")
     override fun start(context: Context) {
-        // 1. Hook vào khung chat để lấy nút + và thêm nút Paste
         patcher.after<FlexInputFragment>("onViewCreated", View::class.java) { param ->
             val view = param.args[0] as View
             val input = view.findViewById<EditText>(com.discord.R.id.chat_input_edit_text) ?: return@after
             val parent = input.parent as? ViewGroup ?: return@after
             chatInputRef = input
 
-            // Nút Paste (nằm cạnh dấu +)
             val pasteBtn = ImageButton(context).apply {
                 setImageResource(android.R.drawable.ic_menu_edit)
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -52,10 +50,8 @@ class MyFirstKotlinPlugin : Plugin() {
                     }
                 }
             }
-            // Thêm nút Paste vào vị trí số 1 (ngay sau nút +)
             parent.addView(pasteBtn, 1)
 
-            // Tự động chèn Prefix khi khung chat trống
             input.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -72,27 +68,22 @@ class MyFirstKotlinPlugin : Plugin() {
             })
         }
 
-        // 2. Tạo nút Spam nổi trên màn hình (kéo thả được)
         if (context is android.app.Activity) {
             val rootView = context.window.decorView as ViewGroup
             
             val spamBtn = ImageButton(context).apply {
-                setImageResource(android.R.drawable.ic_menu_sort_by_size) // Icon vuông
-                setBackgroundColor(android.graphics.Color.parseColor("#55FF5555")) // Màu đỏ mờ để dễ thấy
+                setImageResource(android.R.drawable.ic_menu_sort_by_size)
+                setBackgroundColor(android.graphics.Color.parseColor("#55FF5555"))
                 setPadding(25, 25, 25, 25)
             }
             
-            val params = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            )
+            val params = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
             params.gravity = Gravity.TOP or Gravity.START
             params.leftMargin = 200
             params.topMargin = 400
             
             rootView.addView(spamBtn, params)
 
-            // Logic kéo thả nút Spam
             var initialX = 0
             var initialY = 0
             var initialTouchX = 0f
@@ -113,7 +104,6 @@ class MyFirstKotlinPlugin : Plugin() {
                         val dx = (event.rawX - initialTouchX).toInt()
                         val dy = (event.rawY - initialTouchY).toInt()
                         if (Math.abs(dx) > 5 || Math.abs(dy) > 5) isDragging = true
-                        
                         params.leftMargin = initialX + dx
                         params.topMargin = initialY + dy
                         v.layoutParams = params
@@ -124,8 +114,6 @@ class MyFirstKotlinPlugin : Plugin() {
                             val input = chatInputRef
                             if (input != null) {
                                 showSpamMenu(context, input)
-                            } else {
-                                Toast.makeText(context, "Hãy mở khung chat trước!", Toast.LENGTH_SHORT).show()
                             }
                         }
                         true
@@ -173,7 +161,7 @@ class MyFirstKotlinPlugin : Plugin() {
 
         val tagLayout = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val tagCheck = CheckBox(context)
-        val tagInput = EditText(context).apply { hint = "2. ID cần tag (vd: 123456)" }
+        val tagInput = EditText(context).apply { hint = "2. ID cần tag" }
         tagLayout.addView(tagCheck)
         tagLayout.addView(tagInput)
         layout.addView(tagLayout)
@@ -210,7 +198,6 @@ class MyFirstKotlinPlugin : Plugin() {
         
         fileBtn.setOnClickListener {
             val pathDialog = AlertDialog.Builder(context)
-            pathDialog.setTitle("Nhập đường dẫn file .txt")
             val pathInput = EditText(context)
             pathInput.setText("/sdcard/spam.txt")
             pathDialog.setView(pathInput)
@@ -221,26 +208,20 @@ class MyFirstKotlinPlugin : Plugin() {
                         msgList.clear()
                         msgList.addAll(file.readLines().filter { it.isNotBlank() })
                         Toast.makeText(context, "Đã tải ${msgList.size} dòng", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "File không tồn tại!", Toast.LENGTH_SHORT).show()
                     }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Lỗi đọc file!", Toast.LENGTH_SHORT).show()
-                }
+                } catch (e: Exception) {}
             }
             pathDialog.show()
         }
         
         manualBtn.setOnClickListener {
             val inputDialog = AlertDialog.Builder(context)
-            inputDialog.setTitle("Nhập nội dung (mỗi dòng 1 câu)")
             val editText = EditText(context)
             editText.setMinLines(5)
             inputDialog.setView(editText)
             inputDialog.setPositiveButton("Lưu") { _, _ ->
                 msgList.clear()
                 msgList.addAll(editText.text.toString().split("\n").filter { it.isNotBlank() })
-                Toast.makeText(context, "Đã lưu ${msgList.size} dòng", Toast.LENGTH_SHORT).show()
             }
             inputDialog.show()
         }
@@ -248,7 +229,6 @@ class MyFirstKotlinPlugin : Plugin() {
         val loopCheck = CheckBox(context).apply { text = "Loop (Lặp lại khi hết)" }
         layout.addView(loopCheck)
 
-        layout.addView(TextView(context).apply { text = "Prefix (Tự chèn khi chat trống):" })
         val prefixLayout = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val prefixBtn = Button(context).apply { text = "Nhập Prefix" }
         val prefixCheck = CheckBox(context).apply { text = "Bật" }
@@ -258,7 +238,6 @@ class MyFirstKotlinPlugin : Plugin() {
 
         prefixBtn.setOnClickListener {
             val inputDialog = AlertDialog.Builder(context)
-            inputDialog.setTitle("Nhập Prefix")
             val editText = EditText(context)
             editText.setText(customPrefix)
             inputDialog.setView(editText)
@@ -301,10 +280,7 @@ class MyFirstKotlinPlugin : Plugin() {
 
         startBtn.setOnClickListener {
             if (isSpamming) return@setOnClickListener
-            if (msgList.isEmpty()) {
-                Toast.makeText(context, "Chưa có nội dung!", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+            if (msgList.isEmpty()) return@setOnClickListener
 
             val delay = delayInput.text.toString().toLongOrNull() ?: 1000L
             val doTag = tagCheck.isChecked
@@ -378,20 +354,15 @@ class MyFirstKotlinPlugin : Plugin() {
                 }
                 isSpamming = false
             }
-            Toast.makeText(context, "Đã bắt đầu spam!", Toast.LENGTH_SHORT).show()
         }
 
         stopBtn.setOnClickListener {
             isSpamming = false
             spamThread?.interrupt()
-            Toast.makeText(context, "Đã dừng spam!", Toast.LENGTH_SHORT).show()
         }
 
         dialog.setView(rootLayout)
         dialog.show()
-        dialog.window?.setLayout(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT
-        )
+        dialog.window?.setLayout(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT)
     }
 }
