@@ -16,76 +16,148 @@ import com.aliucord.annotations.AliucordPlugin
 import com.aliucord.entities.Plugin
 import com.aliucord.patcher.after
 import com.lytefast.flexinput.fragment.FlexInputFragment
+import de.robv.android.xposed.XposedBridge
 import kotlin.concurrent.thread
 import kotlin.random.Random
 
 @AliucordPlugin
-class PasteAndSpamPlugin : Plugin() {
+class MyFirstKotlinPlugin : Plugin() {
     @Volatile private var isSpamming = false
     private var spamThread: Thread? = null
     private var customPrefix = ""
     private var isPrefixEnabled = false
-    private var isLoopEnabled = false
 
     @SuppressLint("ClickableViewAccessibility")
     override fun start(context: Context) {
-        patcher.after<FlexInputFragment>("onViewCreated", View::class.java) { param ->
-            val view = param.args[0] as View
-            val input = view.findViewById<EditText>(com.discord.R.id.chat_input_edit_text) ?: return@after
-            
-            // Tìm thanh công cụ chứa nút + và khung chat
-            val parent = input.parent as? ViewGroup ?: return@after
+        try {
+            val activity = context as android.app.Activity
+            val rootView = activity.window.decorView as ViewGroup
 
-            // Nút Paste (nằm ngay sau dấu +)
+            var chatInput: EditText? = null
+            
+            patcher.after<FlexInputFragment>("onViewCreated", View::class.java) { param ->
+                val view = param.args[0] as View
+                chatInput = view.findViewById(com.discord.R.id.chat_input_edit_text)
+                
+                // Tự động chèn Prefix khi khung chat trống
+                chatInput?.addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                    override fun afterTextChanged(s: Editable?) {
+                        if (isPrefixEnabled && customPrefix.isNotEmpty() && s != null && s.toString().trim().isEmpty() && !isSpamming) {
+                            chatInput?.postDelayed({
+                                if (chatInput?.text.toString().trim().isEmpty()) {
+                                    chatInput?.setText("$customPrefix ")
+                                    chatInput?.setSelection(chatInput?.text?.length ?: 0)
+                                }
+                            }, 100)
+                        }
+                    }
+                })
+            }
+
+            // Nút Paste (Lơ lửng)
             val pasteBtn = ImageButton(context).apply {
                 setImageResource(android.R.drawable.ic_menu_edit)
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                setPadding(15, 15, 15, 15)
-                setOnClickListener {
-                    val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    if (cb.hasPrimaryClip()) {
-                        val text = cb.primaryClip?.getItemAt(0)?.text
-                        if (text != null) {
-                            val start = input.selectionStart.coerceAtLeast(0)
-                            input.text.insert(start, text)
-                        }
-                    }
-                }
+                setPadding(20, 20, 20, 20)
             }
-            
-            // Nút Spam (hình vuông, nằm kế nút Paste)
+            val pasteParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            pasteParams.gravity = Gravity.TOP or Gravity.START
+            pasteParams.leftMargin = 100
+            pasteParams.topMargin = 300
+
+            // Nút Spam (Lơ lửng)
             val spamBtn = ImageButton(context).apply {
-                setImageResource(android.R.drawable.ic_menu_sort_by_size) // Icon vuông
+                setImageResource(android.R.drawable.ic_menu_sort_by_size)
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                setPadding(15, 15, 15, 15)
-                setOnClickListener { showSpamMenu(context, input) }
+                setPadding(20, 20, 20, 20)
             }
+            val spamParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            spamParams.gravity = Gravity.TOP or Gravity.START
+            spamParams.leftMargin = 200
+            spamParams.topMargin = 300
 
-            // Chèn vào sau dấu + (vị trí index 1 và 2)
-            try {
-                parent.addView(pasteBtn, 1)
-                parent.addView(spamBtn, 2)
-            } catch (e: Exception) {
-                parent.addView(pasteBtn)
-                parent.addView(spamBtn)
-            }
+            rootView.addView(pasteBtn, pasteParams)
+            rootView.addView(spamBtn, spamParams)
 
-            // Tự động chèn Prefix khi khung chat trống (sau khi gửi)
-            input.addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    if (isPrefixEnabled && customPrefix.isNotEmpty() && s != null && s.toString().trim().isEmpty() && !isSpamming) {
-                        // Nếu khung chat trống và không phải đang trong quá trình spam
-                        input.postDelayed({
-                            if (input.text.toString().trim().isEmpty()) {
-                                input.setText("$customPrefix ")
-                                input.setSelection(input.text.length)
-                            }
-                        }, 100)
+            // Logic kéo thả nút Paste
+            var pInitX = 0; var pInitY = 0; var pTouchX = 0f; var pTouchY = 0f; var pMoved = false
+            pasteBtn.setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        pInitX = pasteParams.leftMargin; pInitY = pasteParams.topMargin
+                        pTouchX = event.rawX; pTouchY = event.rawY
+                        pMoved = false
+                        true
                     }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - pTouchX).toInt()
+                        val dy = (event.rawY - pTouchY).toInt()
+                        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) pMoved = true
+                        pasteParams.leftMargin = pInitX + dx
+                        pasteParams.topMargin = pInitY + dy
+                        v.layoutParams = pasteParams
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (!pMoved) {
+                            val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            if (cb.hasPrimaryClip()) {
+                                val text = cb.primaryClip?.getItemAt(0)?.text
+                                if (text != null) {
+                                    val input = chatInput
+                                    if (input != null) {
+                                        val start = input.selectionStart.coerceAtLeast(0)
+                                        input.text.insert(start, text)
+                                    } else {
+                                        Toast.makeText(context, "Mở khung chat trước!", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
+                        true
+                    }
+                    else -> false
                 }
-            })
+            }
+
+            // Logic kéo thả nút Spam
+            var sInitX = 0; var sInitY = 0; var sTouchX = 0f; var sTouchY = 0f; var sMoved = false
+            spamBtn.setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        sInitX = spamParams.leftMargin; sInitY = spamParams.topMargin
+                        sTouchX = event.rawX; sTouchY = event.rawY
+                        sMoved = false
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - sTouchX).toInt()
+                        val dy = (event.rawY - sTouchY).toInt()
+                        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) sMoved = true
+                        spamParams.leftMargin = sInitX + dx
+                        spamParams.topMargin = sInitY + dy
+                        v.layoutParams = spamParams
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (!sMoved) {
+                            val input = chatInput
+                            if (input != null) {
+                                showSpamMenu(context, input)
+                            } else {
+                                Toast.makeText(context, "Mở khung chat trước!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
+
+        } catch (e: Throwable) {
+            XposedBridge.log(e)
         }
     }
 
@@ -104,7 +176,6 @@ class PasteAndSpamPlugin : Plugin() {
             setPadding(30, 30, 30, 30)
         }
 
-        // Thanh kéo di chuyển menu
         val dragBar = TextView(context).apply {
             text = "≡ Kéo để di chuyển ≡"
             gravity = Gravity.CENTER
@@ -119,14 +190,12 @@ class PasteAndSpamPlugin : Plugin() {
         }
         scrollView.addView(layout)
 
-        // Dòng 1: Delay
         val delayInput = EditText(context).apply {
             hint = "1. Delay (ms) - vd: 1000"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
         layout.addView(delayInput)
 
-        // Dòng 2: Tag
         val tagLayout = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val tagCheck = CheckBox(context)
         val tagInput = EditText(context).apply { hint = "2. ID cần tag (vd: 123456)" }
@@ -134,29 +203,28 @@ class PasteAndSpamPlugin : Plugin() {
         tagLayout.addView(tagInput)
         layout.addView(tagLayout)
 
-        // Dòng 2.5: Tùy chọn vị trí Tag
         layout.addView(TextView(context).apply { text = "2.5 Vị trí Tag:" })
         val tagPosGroup = RadioGroup(context).apply { orientation = RadioGroup.HORIZONTAL }
         val tagPosOptions = arrayOf("Đầu", "Giữa", "Cuối", "Random", "Cả 2", "Cả 3")
         for (i in tagPosOptions.indices) {
-            val rb = RadioButton(context).apply { text = tagPosOptions[i]; id = i }
+            // FIX LỖI: Thay id = i thành this.id = i + 100
+            val rb = RadioButton(context).apply { text = tagPosOptions[i]; this.id = i + 100 }
             tagPosGroup.addView(rb)
         }
-        tagPosGroup.check(0)
+        tagPosGroup.check(100)
         layout.addView(tagPosGroup)
 
-        // Dòng 3: Vị trí gửi chữ
         layout.addView(TextView(context).apply { text = "3. Vị trí gửi chữ:" })
         val msgPosGroup = RadioGroup(context)
         val msgPosOptions = arrayOf("Đầu - Cuối", "Cuối - Đầu", "Random", "Full (CopyPaste)")
         for (i in msgPosOptions.indices) {
-            val rb = RadioButton(context).apply { text = msgPosOptions[i]; id = i }
+            // FIX LỖI: Thay id = i thành this.id = i + 200
+            val rb = RadioButton(context).apply { text = msgPosOptions[i]; this.id = i + 200 }
             msgPosGroup.addView(rb)
         }
-        msgPosGroup.check(0)
+        msgPosGroup.check(200)
         layout.addView(msgPosGroup)
 
-        // Dòng 5: Nguồn chữ
         layout.addView(TextView(context).apply { text = "5. Nguồn chữ:" })
         val msgSourceLayout = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val fileBtn = Button(context).apply { text = "Nhập file .txt" }
@@ -167,7 +235,6 @@ class PasteAndSpamPlugin : Plugin() {
         
         val msgList = mutableListOf<String>()
         
-        // Nhập file (giả lập đọc từ bộ nhớ)
         fileBtn.setOnClickListener {
             val pathDialog = AlertDialog.Builder(context)
             pathDialog.setTitle("Nhập đường dẫn file .txt")
@@ -191,7 +258,6 @@ class PasteAndSpamPlugin : Plugin() {
             pathDialog.show()
         }
         
-        // Nhập tay
         manualBtn.setOnClickListener {
             val inputDialog = AlertDialog.Builder(context)
             inputDialog.setTitle("Nhập nội dung (mỗi dòng 1 câu)")
@@ -206,11 +272,9 @@ class PasteAndSpamPlugin : Plugin() {
             inputDialog.show()
         }
 
-        // Loop
         val loopCheck = CheckBox(context).apply { text = "Loop (Lặp lại khi hết)" }
         layout.addView(loopCheck)
 
-        // Prefix
         layout.addView(TextView(context).apply { text = "Prefix (Tự chèn khi chat trống):" })
         val prefixLayout = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val prefixBtn = Button(context).apply { text = "Nhập Prefix" }
@@ -231,7 +295,6 @@ class PasteAndSpamPlugin : Plugin() {
             inputDialog.show()
         }
 
-        // Start / Stop
         val btnLayout = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val startBtn = Button(context).apply { text = "START" }
         val stopBtn = Button(context).apply { text = "STOP" }
@@ -242,11 +305,7 @@ class PasteAndSpamPlugin : Plugin() {
         rootLayout.addView(dragBar)
         rootLayout.addView(scrollView)
 
-        // Logic di chuyển menu
-        var initialX = 0
-        var initialY = 0
-        var initialTouchX = 0f
-        var initialTouchY = 0f
+        var initialX = 0; var initialY = 0; var initialTouchX = 0f; var initialTouchY = 0f
         dragBar.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -267,7 +326,6 @@ class PasteAndSpamPlugin : Plugin() {
             }
         }
 
-        // Bắt đầu Spam
         startBtn.setOnClickListener {
             if (isSpamming) return@setOnClickListener
             if (msgList.isEmpty()) {
@@ -278,8 +336,8 @@ class PasteAndSpamPlugin : Plugin() {
             val delay = delayInput.text.toString().toLongOrNull() ?: 1000L
             val doTag = tagCheck.isChecked
             val tagId = tagInput.text.toString().trim()
-            val tagPos = tagPosGroup.checkedRadioButtonId
-            val msgPos = msgPosGroup.checkedRadioButtonId
+            val tagPos = tagPosGroup.checkedRadioButtonId - 100 // FIX LỖI: Trừ đi 100 để lấy đúng vị trí
+            val msgPos = msgPosGroup.checkedRadioButtonId - 200 // FIX LỖI: Trừ đi 200 để lấy đúng vị trí
             val isLoop = loopCheck.isChecked
             isPrefixEnabled = prefixCheck.isChecked
 
@@ -295,16 +353,14 @@ class PasteAndSpamPlugin : Plugin() {
                         msgList[index++]
                     }
 
-                    // Xử lý vị trí chữ
                     msg = when (msgPos) {
                         0 -> "$msg\n"
                         1 -> "\n$msg"
                         2 -> if (Random.nextBoolean()) "$msg\n" else "\n$msg"
-                        3 -> msg // Full (Ko khoảng trắng)
+                        3 -> msg
                         else -> msg
                     }
 
-                    // Xử lý Tag & Tự động phát hiện Prefix trong câu
                     if (doTag && tagId.isNotEmpty()) {
                         val mentionId = if (tagId.startsWith("<@")) tagId else "<@$tagId>"
                         val prefixesToCheck = arrayOf("> # ", "> ", "# ")
@@ -319,24 +375,22 @@ class PasteAndSpamPlugin : Plugin() {
                             }
                         }
 
-                        // Nếu có prefix trong câu, tag sẽ nằm ngay sau prefix đó (cách 1 khoảng trắng)
                         msg = if (prefixFound.isNotEmpty()) {
                             "$prefixFound$mentionId $contentWithoutPrefix"
                         } else {
-                            // Nếu không có prefix, chèn theo vị trí Freddy chọn
                             when (tagPos) {
-                                0 -> "$mentionId $msg" // Đầu
-                                1 -> { // Giữa
+                                0 -> "$mentionId $msg"
+                                1 -> {
                                     val lines = msg.split("\n")
                                     if (lines.size > 1) {
                                         val mid = lines.size / 2
                                         lines.toMutableList().apply { add(mid, mentionId) }.joinToString("\n")
                                     } else { "$mentionId $msg" }
                                 }
-                                2 -> "$msg$mentionId" // Cuối
-                                3 -> if (Random.nextBoolean()) "$mentionId $msg" else "$msg$mentionId" // Random
-                                4 -> "$mentionId\n$msg\n$mentionId" // Cả 2 đầu cuối
-                                5 -> "$mentionId\n$mentionId\n$mentionId\n$msg" // Cả 3 (giả lập 3 tag)
+                                2 -> "$msg$mentionId"
+                                3 -> if (Random.nextBoolean()) "$mentionId $msg" else "$msg$mentionId"
+                                4 -> "$mentionId\n$msg\n$mentionId"
+                                5 -> "$mentionId\n$mentionId\n$mentionId\n$msg"
                                 else -> msg
                             }
                         }
