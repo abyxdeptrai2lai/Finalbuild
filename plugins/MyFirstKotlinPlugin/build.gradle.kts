@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -11,13 +13,16 @@ android {
         minSdk = 26
     }
     
-    // ĐÂY LÀ CHỖ SỬA LỖI LỆCH JAVA/KOTLIN
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    kotlinOptions {
-        jvmTarget = "21"
+}
+
+// CÚ PHÁP MỚI: Thay thế hoàn toàn kotlinOptions cũ
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
     }
 }
 
