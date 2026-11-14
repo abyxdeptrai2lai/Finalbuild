@@ -10,6 +10,15 @@ android {
     defaultConfig {
         minSdk = 26
     }
+    
+    // ĐÂY LÀ CHỖ SỬA LỖI LỆCH JAVA/KOTLIN
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = "21"
+    }
 }
 
 aliucord {
