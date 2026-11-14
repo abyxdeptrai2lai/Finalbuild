@@ -3,11 +3,3 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.3.21" apply false
     id("com.aliucord.plugin") version "2.3.1" apply false
 }
-
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://maven.aliucord.com/releases") }
-    }
-}
