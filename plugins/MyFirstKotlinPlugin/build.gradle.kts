@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -19,10 +17,10 @@ android {
     }
 }
 
-// CÚ PHÁP MỚI: Thay thế hoàn toàn kotlinOptions cũ
+// Không dùng kotlinOptions nữa, chuyển sang compilerOptions như tài liệu
 kotlin {
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_21)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
 }
 
@@ -34,5 +32,7 @@ aliucord {
 }
 
 dependencies {
+    // Bổ sung thư viện để compile code Kotlin
     compileOnly("com.discord:discord:126021")
+    compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
 }
