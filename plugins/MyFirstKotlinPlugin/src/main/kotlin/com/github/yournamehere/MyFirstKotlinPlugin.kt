@@ -154,7 +154,7 @@ class MyFirstKotlinPlugin : Plugin() {
         scrollView.addView(layout)
 
         val delayInput = EditText(context).apply {
-            hint = "1. Delay (ms) - vd: 1000"
+            hint = "1. Delay (ms)"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
         layout.addView(delayInput)
