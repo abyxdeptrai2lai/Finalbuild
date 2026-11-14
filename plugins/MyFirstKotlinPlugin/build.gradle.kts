@@ -17,7 +17,6 @@ android {
     }
 }
 
-// Không dùng kotlinOptions nữa, chuyển sang compilerOptions như tài liệu
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
@@ -32,7 +31,7 @@ aliucord {
 }
 
 dependencies {
-    // Bổ sung thư viện để compile code Kotlin
+    compileOnly("com.aliucord:Aliucord:2.9.1")
     compileOnly("com.discord:discord:126021")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
 }
